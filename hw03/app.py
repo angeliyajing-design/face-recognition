@@ -2,39 +2,35 @@ import streamlit as st
 import cv2
 import numpy as np
 from PIL import Image
+from src.face_utils import detect_faces, draw_face_boxes, recognize_faces, load_known_faces
 
-# 页面配置
-st.set_page_config(page_title="人脸检测系统", page_icon="👤")
-st.title("👤 人脸检测作业 - Streamlit 部署版")
-
-# 加载OpenCV人脸检测器
-face_cascade = cv2.CascadeClassifier(
-    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-)
+st.title("🔍 人脸检测与识别 Demo")
 
 # 上传图片
-uploaded = st.file_uploader("上传图片", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("上传一张图片", type=["jpg", "png", "jpeg"])
+if uploaded_file is not None:
+    image = Image.open(uploaded_file)
+    img_array = np.array(image)
+    st.subheader("原始图片")
+    st.image(image, use_column_width=True)
 
-if uploaded is not None:
-    # 打开图片
-    img = Image.open(uploaded)
-    img_np = np.array(img.convert("RGB"))
-    
-    # 转灰度图
-    gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
-    
-    # 人脸检测
-    faces = face_cascade.detectMultiScale(
-        gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)
-    )
+    # 检测人脸
+    face_locations = detect_faces(img_array)
+    st.info(f"检测到 {len(face_locations)} 张人脸")
 
-    # 画框
-    for (x, y, w, h) in faces:
-        cv2.rectangle(img_np, (x, y), (x + w, y + h), (255, 0, 0), 2)
+    # 可选：加载人脸库并识别
+    use_recognition = st.checkbox("启用人脸识别（需要 known_faces 目录）")
+    if use_recognition:
+        try:
+            known_encodings, known_names = load_known_faces()
+            face_locations, face_names = recognize_faces(img_array, known_encodings, known_names)
+        except:
+            st.warning("未找到 known_faces 目录或目录为空，仅显示检测框")
+            face_names = None
+    else:
+        face_names = None
 
-    # 显示
-    st.subheader(f"检测到 {len(faces)} 张人脸")
-    st.image(img_np, use_column_width=True, caption="检测结果（蓝色框为人脸）")
-
-st.markdown("---")
-st.success("✅ 作业完成：人脸检测功能正常运行！")
+    # 绘制结果
+    result_img = draw_face_boxes(img_array.copy(), face_locations, face_names)
+    st.subheader("检测结果")
+    st.image(result_img, use_column_width=True)
