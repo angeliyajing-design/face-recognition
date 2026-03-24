@@ -1,46 +1,49 @@
+import face_recognition
 import cv2
 import numpy as np
 
-# 加载 OpenCV 自带的 Haar 人脸检测器（无需 dlib）
-face_cascade = cv2.CascadeClassifier(
-    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-)
+def load_known_faces(known_images_dir="known_faces/"):
+    """加载已知人脸库（可选功能）"""
+    known_encodings = []
+    known_names = []
+    import os
+    for img_name in os.listdir(known_images_dir):
+        if img_name.endswith((".jpg", ".png")):
+            img_path = os.path.join(known_images_dir, img_name)
+            image = face_recognition.load_image_file(img_path)
+            encodings = face_recognition.face_encodings(image)
+            if encodings:
+                known_encodings.append(encodings[0])
+                known_names.append(os.path.splitext(img_name)[0])
+    return known_encodings, known_names
 
-def detect_faces(img_array):
-    """
-    检测图片中的人脸位置
-    返回格式：[(top, right, bottom, left), ...]
-    与原 face_recognition 接口保持一致
-    """
-    # 转为灰度图（Haar 检测器需要灰度输入）
-    gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
-    
-    # 检测人脸
-    faces = face_cascade.detectMultiScale(
-        gray,
-        scaleFactor=1.1,
-        minNeighbors=5,
-        minSize=(30, 30)
-    )
-    
-    # 转换为 (top, right, bottom, left) 格式
-    face_locations = []
-    for (x, y, w, h) in faces:
-        face_locations.append((y, x + w, y + h, x))
-    
+def detect_faces(image: np.ndarray):
+    """检测人脸并返回框位置"""
+    face_locations = face_recognition.face_locations(image)
     return face_locations
 
-def load_known_faces():
-    """
-    纯检测版本：不加载人脸库，返回空列表
-    """
-    return [], []
-
-def recognize_faces(img_array, known_encodings, known_names):
-    """
-    纯检测版本：只返回人脸位置，不做识别
-    """
-    face_locations = detect_faces(img_array)
-    # 不识别，所以名字都设为 None
-    face_names = [None] * len(face_locations)
+def recognize_faces(image: np.ndarray, known_encodings, known_names):
+    """识别人脸（可选功能）"""
+    face_locations = face_recognition.face_locations(image)
+    face_encodings = face_recognition.face_encodings(image, face_locations)
+    face_names = []
+    for encoding in face_encodings:
+        matches = face_recognition.compare_faces(known_encodings, encoding)
+        name = "Unknown"
+        face_distances = face_recognition.face_distance(known_encodings, encoding)
+        if len(face_distances) > 0:
+            best_match_index = np.argmin(face_distances)
+            if matches[best_match_index]:
+                name = known_names[best_match_index]
+        face_names.append(name)
     return face_locations, face_names
+
+def draw_face_boxes(image: np.ndarray, face_locations, face_names=None):
+    """在图片上绘制人脸框和标签"""
+    for (top, right, bottom, left), name in zip(face_locations, face_names or [""]*len(face_locations)):
+        cv2.rectangle(image, (left, top), (right, bottom), (0, 255, 0), 2)
+        if name:
+            cv2.rectangle(image, (left, bottom - 35), (right, bottom), (0, 255, 0), cv2.FILLED)
+            font = cv2.FONT_HERSHEY_DUPLEX
+            cv2.putText(image, name, (left + 6, bottom - 6), font, 0.6, (255, 255, 255), 1)
+    return image
